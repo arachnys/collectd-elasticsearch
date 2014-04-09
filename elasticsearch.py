@@ -16,11 +16,10 @@ STAT=dict()
 
 # INDICES METRICS #
 ## CACHE
-STAT['indices.cache.field.eviction'] = { "type": "counter", "path": "nodes.%s.indices.cache.field_evictions" }
-STAT['indices.cache.field.size'] = { "type": "bytes", "path": "nodes.%s.indices.cache.field_size_in_bytes" }
-STAT['indices.cache.filter.count'] = { "type": "counter", "path": "nodes.%s.indices.cache.filter_count" }
-STAT['indices.cache.filter.evictions'] = { "type": "counter", "path": "nodes.%s.indices.cache.filter_evictions" }
-STAT['indices.cache.filter.size'] = { "type": "bytes", "path": "nodes.%s.indices.cache.filter_size_in_bytes" }
+for cache in ('filter_cache', 'fielddata',):
+  for attr, attr_type in (('memory_size_in_bytes', 'bytes'), ('evictions', 'gauge')):
+    path = 'indices.{0}.{1}'.format(cache, attr)
+    STAT[path] = {'type': attr_type, 'path': 'nodes.%s.{0}'.format(path)}
 
 ## DOCS
 STAT['indices.docs.count'] = { "type": "gauge", "path": "nodes.%s.indices.docs.count" }
@@ -68,6 +67,12 @@ STAT['indices.search.fetch-time'] = { "type": "counter", "path": "nodes.%s.indic
 ## STORE
 STAT['indices.store.size'] = { "type": "bytes", "path": "nodes.%s.indices.store.size_in_bytes" }
 
+## THERAD POOLS
+for pool in ['generic', 'index', 'get', 'snapshot', 'merge', 'optimize', 'bulk', 'warmer', 'flush', 'search', 'refresh']:
+  for attr in ['threads', 'queue', 'active', 'rejected', 'largest', 'completed']:
+    path = 'thread_pool.{0}.{1}'.format(pool, attr)
+    STAT[path] = {'type': 'gauge', 'path': 'nodes.%s.{0}'.format(path)}
+
 # JVM METRICS #
 ## MEM
 STAT['jvm.mem.heap-committed'] = { "type": "bytes", "path": "nodes.%s.jvm.mem.heap_committed_in_bytes" }
@@ -80,8 +85,8 @@ STAT['jvm.threads.count'] = { "type": "gauge", "path": "nodes.%s.jvm.threads.cou
 STAT['jvm.threads.peak'] = { "type": "gauge", "path": "nodes.%s.jvm.threads.peak_count" }
 
 ## GC
-STAT['jvm.gc.time'] = { "type": "counter", "path": "nodes.%s.jvm.gc.collection_time_in_millis" }
-STAT['jvm.gc.count'] = { "type": "counter", "path": "nodes.%s.jvm.gc.collection_count" }
+STAT['jvm.gc.time'] = { "type": "counter", "path": "nodes.%s.jvm.gc.collectors.young.collection_time_in_millis" }
+STAT['jvm.gc.count'] = { "type": "counter", "path": "nodes.%s.jvm.gc.collectors.young.collection_count" }
 
 # TRANSPORT METRICS #
 STAT['transport.server_open'] = { "type": "gauge", "path": "nodes.%s.transport.server_open" }
@@ -125,11 +130,11 @@ def configure_callback(conf):
         else:
             collectd.warning('elasticsearch plugin: Unknown config key: %s.'
                              % node.key)
-    ES_URL = "http://" + ES_HOST + ":" + str(ES_PORT) + "/_cluster/nodes/_local/stats?http=true&process=true&jvm=true&transport=true"
+    ES_URL = "http://" + ES_HOST + ":" + str(ES_PORT) + "/_nodes/_local/stats?http=true&process=true&jvm=true&transport=true&thread_pool=true"
 
     log_verbose('Configured with host=%s, port=%s, url=%s' % (ES_HOST, ES_PORT, ES_URL))
 
-def fetch_stats(): 
+def fetch_stats():
     global ES_URL, ES_CLUSTER
 
     try:
@@ -138,7 +143,7 @@ def fetch_stats():
         collectd.error('elasticsearch plugin: Error connecting to %s - %r' % (ES_URL, e))
         return None
     print result['cluster_name']
-  
+
     ES_CLUSTER = result['cluster_name']
     return parse_stats(result)
 
@@ -186,4 +191,3 @@ def log_verbose(msg):
 
 collectd.register_config(configure_callback)
 collectd.register_read(read_callback)
-
